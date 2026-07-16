@@ -6,7 +6,8 @@
 # optional cover.jpg per album), then:
 #
 #   1. Strips anything in (parentheses) from file and directory names.
-#   2. Strips remaining punctuation (dashes are kept).
+#   2. Strips remaining punctuation (dashes are kept); artist folders also
+#      lose a leading "The " (The Beatles -> Beatles).
 #   3. Encodes each .flac to mp3 (lame CBR 320 kbps, -q 4), preserving tags,
 #      into MP3_DEST/Artist/Album/Song.mp3
 #   4. Moves the original .flac to FLAC_DEST/Artist/Album/Song.flac
@@ -116,6 +117,8 @@ for artist_dir in "$SRC"/*/; do
     artist=$(basename "$artist_dir")
     c_artist=$(clean_name "$artist")
     [[ -n "$c_artist" ]] || c_artist="$artist"
+    # Strip leading "The " from artist folders (The Beatles -> Beatles)
+    [[ "$c_artist" =~ ^[Tt]he\ (.+)$ ]] && c_artist="${BASH_REMATCH[1]}"
 
     for album_dir in "$artist_dir"*/; do
         album=$(basename "$album_dir")
