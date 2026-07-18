@@ -87,19 +87,25 @@ dedupe_track() {
 
 encode_mp3() {
     local src="$1" dst="$2" cover="${3:-}"
-    local title artist album track date
+    local title artist album track date genre albumartist disc
     title=$(flac_tag "$src" TITLE)
     artist=$(flac_tag "$src" ARTIST)
     album=$(flac_tag "$src" ALBUM)
     track=$(flac_tag "$src" TRACKNUMBER)
     date=$(flac_tag "$src" DATE)
+    genre=$(flac_tag "$src" GENRE)
+    albumartist=$(flac_tag "$src" ALBUMARTIST)
+    disc=$(flac_tag "$src" DISCNUMBER)
 
     local -a tagargs=(--add-id3v2)
-    [[ -n "$title"  ]] && tagargs+=(--tt "$title")
-    [[ -n "$artist" ]] && tagargs+=(--ta "$artist")
-    [[ -n "$album"  ]] && tagargs+=(--tl "$album")
-    [[ -n "$track"  ]] && tagargs+=(--tn "$track")
-    [[ -n "$date"   ]] && tagargs+=(--ty "${date:0:4}")
+    [[ -n "$title"       ]] && tagargs+=(--tt "$title")
+    [[ -n "$artist"      ]] && tagargs+=(--ta "$artist")
+    [[ -n "$album"       ]] && tagargs+=(--tl "$album")
+    [[ -n "$track"       ]] && tagargs+=(--tn "$track")
+    [[ -n "$date"        ]] && tagargs+=(--ty "${date:0:4}")
+    [[ -n "$genre"       ]] && tagargs+=(--tg "$genre")
+    [[ -n "$albumartist" ]] && tagargs+=(--tv "TPE2=$albumartist")
+    [[ -n "$disc"        ]] && tagargs+=(--tv "TPOS=$disc")
     [[ -n "$cover" && -f "$cover" ]] && tagargs+=(--ti "$cover")
 
     if (( DRY_RUN )); then
