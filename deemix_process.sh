@@ -3,7 +3,7 @@
 # deemix_process.sh — clean names and process a downloaded FLAC library.
 #
 # Expects a Source tree laid out as Artist/Album/NN Song.flac (plus an
-# optional cover.jpg per album), then:
+# optional cover image per album), then:
 #
 #   1. Strips anything in (parentheses) from file and directory names.
 #   2. Strips remaining punctuation (dashes are kept); artist folders also
@@ -11,7 +11,9 @@
 #   3. Encodes each .flac to mp3 (lame CBR 320 kbps, -q 4), preserving tags,
 #      into MP3_DEST/Artist/Album/Song.mp3
 #   4. Moves the original .flac to FLAC_DEST/Artist/Album/Song.flac
-#   cover.jpg is copied into the mp3 album dir and moved with the FLACs.
+#   Album art: the first jpg/jpeg/png/gif in each album folder is renamed to
+#   cover.<ext>, embedded in the mp3s (lame --ti), copied into the mp3 album
+#   dir, and moved with the FLACs.
 #
 # Duplicate handling: within a destination album dir a track is identified by
 # its leading two-digit track number ("NN ..."). Any existing file with the
@@ -84,7 +86,7 @@ dedupe_track() {
 }
 
 encode_mp3() {
-    local src="$1" dst="$2"
+    local src="$1" dst="$2" cover="${3:-}"
     local title artist album track date
     title=$(flac_tag "$src" TITLE)
     artist=$(flac_tag "$src" ARTIST)
@@ -98,17 +100,25 @@ encode_mp3() {
     [[ -n "$album"  ]] && tagargs+=(--tl "$album")
     [[ -n "$track"  ]] && tagargs+=(--tn "$track")
     [[ -n "$date"   ]] && tagargs+=(--ty "${date:0:4}")
+    [[ -n "$cover" && -f "$cover" ]] && tagargs+=(--ti "$cover")
 
     if (( DRY_RUN )); then
-        echo "DRY: encode '$src' -> '$dst'"
+        echo "DRY: encode '$src' -> '$dst'${cover:+ (art: $cover)}"
         return 0
     fi
     flac -dcs "$src" | lame --quiet -b 320 --cbr -q 4 "${tagargs[@]}" - "$dst"
     local st=("${PIPESTATUS[@]}")
-    if (( st[0] != 0 || st[1] != 0 )); then
-        rm -f "$dst"
-        return 1
+    if (( st[0] == 0 && st[1] == 0 )); then
+        return 0
     fi
+    rm -f "$dst"
+    # lame can reject album art (e.g. >128KB in some builds); retry without it.
+    if [[ -n "$cover" ]]; then
+        echo "WARN: encode with album art failed, retrying without: $(basename "$src")" >&2
+        encode_mp3 "$src" "$dst" ""
+        return $?
+    fi
+    return 1
 }
 
 shopt -s nullglob
@@ -129,6 +139,23 @@ for artist_dir in "$SRC"/*/; do
         flac_album_dir="$FLAC_DEST/$c_artist/$c_album"
         run mkdir -p "$mp3_album_dir" "$flac_album_dir"
 
+        # Album art: prefer an existing cover.<ext>; otherwise rename the
+        # first jpg/jpeg/png/gif found to cover.<ext>.
+        cover=""
+        for img in "$album_dir"cover.{jpg,jpeg,png,gif}; do
+            [[ -f "$img" ]] && { cover="$img"; break; }
+        done
+        if [[ -z "$cover" ]]; then
+            for img in "$album_dir"*.{jpg,jpeg,png,gif}; do
+                [[ -f "$img" ]] || continue
+                ext="${img##*.}"
+                echo "RENAME (cover): $img -> ${album_dir}cover.$ext"
+                run mv "$img" "${album_dir}cover.$ext"
+                cover="${album_dir}cover.$ext"
+                break
+            done
+        fi
+
         for f in "$album_dir"*.flac; do
             name=$(basename "$f" .flac)
             c_name=$(clean_name "$name")
@@ -143,7 +170,7 @@ for artist_dir in "$SRC"/*/; do
             if [[ -e "$mp3_out" ]]; then
                 echo "SKIP (exists): $mp3_out"
                 (( skipped++ ))
-            elif encode_mp3 "$f" "$mp3_out"; then
+            elif encode_mp3 "$f" "$mp3_out" "$cover"; then
                 echo "MP3:  $mp3_out"
                 (( encoded++ ))
             else
@@ -168,16 +195,17 @@ for artist_dir in "$SRC"/*/; do
         done
 
         # Cover art: copy into the Mp3 tree, move with the FLACs.
-        if [[ -f "$album_dir/cover.jpg" ]]; then
-            if [[ ! -e "$mp3_album_dir/cover.jpg" ]]; then
-                run cp "$album_dir/cover.jpg" "$mp3_album_dir/cover.jpg"
+        if [[ -n "$cover" && -f "$cover" ]]; then
+            cbase=$(basename "$cover")
+            if [[ ! -e "$mp3_album_dir/$cbase" ]]; then
+                run cp "$cover" "$mp3_album_dir/$cbase"
             fi
-            if [[ ! -e "$flac_album_dir/cover.jpg" ]]; then
-                run mv "$album_dir/cover.jpg" "$flac_album_dir/cover.jpg"
+            if [[ ! -e "$flac_album_dir/$cbase" ]]; then
+                run mv "$cover" "$flac_album_dir/$cbase"
             fi
-            if [[ -f "$album_dir/cover.jpg" && -e "$mp3_album_dir/cover.jpg" && -e "$flac_album_dir/cover.jpg" ]]; then
-                echo "RM (source cover, both exist): $album_dir/cover.jpg"
-                run rm -f "$album_dir/cover.jpg"
+            if [[ -f "$cover" && -e "$mp3_album_dir/$cbase" && -e "$flac_album_dir/$cbase" ]]; then
+                echo "RM (source cover, both exist): $cover"
+                run rm -f "$cover"
             fi
         fi
 

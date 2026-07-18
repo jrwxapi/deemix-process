@@ -4,7 +4,8 @@ Post-processes a downloaded FLAC library laid out as `Artist/Album/NN Song.flac`
 
 1. Cleans file and directory names — strips anything in parentheses and all punctuation (dashes are kept). Artist folders also lose a leading "The " (`The Beatles` → `Beatles`).
 2. Encodes each FLAC to MP3 (`lame` CBR 320 kbps, `-q 4`), preserving tags, into `MP3_DEST/Artist/Album/Song.mp3`.
-3. Moves the original FLAC to `FLAC_DEST/Artist/Album/Song.flac`; `cover.jpg` is copied to the MP3 tree and moved with the FLACs.
+3. Moves the original FLAC to `FLAC_DEST/Artist/Album/Song.flac`.
+4. Album art: the first `jpg`/`jpeg`/`png`/`gif` in each album folder is renamed to `cover.<ext>`, embedded in the MP3s (`lame --ti`), copied to the MP3 tree, and moved with the FLACs. If lame rejects the art (some builds cap it at 128 KB), the track is re-encoded without it.
 4. Dedupes destination albums by leading two-digit track number, removing older/misspelled variants of the same track.
 5. Deletes sources once both the MP3 and FLAC exist at their destinations, printing every deletion.
 
